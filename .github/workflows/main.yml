@@ -1,4 +1,5 @@
 name: CI
+run-name: "CI ${{ inputs.leg || github.event_name }} ${{ inputs.racecar_run }}"
 on:
   push:
     branches:
@@ -16,8 +17,27 @@ on:
     types:
       - released
 
+  workflow_dispatch:
+    inputs:
+      leg:
+        description: "baseline (uninstrumented) or instrumented (under chalk/curiosity)"
+        type: choice
+        options: [instrumented, baseline]
+        default: baseline
+      profile:
+        description: "CrashOverride chalk profile"
+        type: string
+        default: curiosity-tests-racecar
+      racecar_run:
+        description: "racecar correlation token, echoed into the run name"
+        type: string
+        default: ""
+
+env:
+  CHALK_ON: ${{ inputs.leg == 'instrumented' }}
 jobs:
   images:
+    continue-on-error: true   # racecar: scan/report reusable workflow, but needed
     uses: ./.github/workflows/images.yml
 
   prepare:
@@ -69,6 +89,7 @@ jobs:
           cat module.xml
           echo number=${VERSION} >> $GITHUB_OUTPUT
       - name: Build
+        continue-on-error: true   # racecar: scan/report/push step, must not fail the build
         uses: docker/build-push-action@v4
         with:
           context: .
@@ -145,6 +166,7 @@ jobs:
           EOF
           docker logs $REGISTRY
       - name: Test and publish to temporary registry
+        continue-on-error: true   # racecar: scan/report/push step, must not fail the build
         timeout-minutes: 15
         run: |
           CONTAINER=$(docker run --network zpm -d --rm zpm ${{ steps.image.outputs.flags }})
@@ -267,6 +289,7 @@ jobs:
           path: zpm-${{ needs.prepare.outputs.version }}.xml
 
   release:
+    continue-on-error: true   # racecar: scan job other jobs need
     runs-on: ubuntu-latest
     if: github.event.repository.fork == false
     needs:
